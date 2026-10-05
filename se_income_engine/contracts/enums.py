@@ -1,0 +1,194 @@
+"""Enumerations defined by the specification (Sections 3, 5, 6, 9, 13, 20, 28.2, Appendix C)."""
+
+from enum import Enum
+
+
+class AccountType(str, Enum):
+    SAVINGS = "SAVINGS"
+    CURRENT = "CURRENT"
+    OD = "OD"
+    CC = "CC"
+    OTHER = "OTHER"
+
+
+class LegalOwnerType(str, Enum):
+    INDIVIDUAL = "INDIVIDUAL"
+    SOLE_PROP = "SOLE_PROP"
+    INDIVIDUAL_PROFESSIONAL = "INDIVIDUAL_PROFESSIONAL"
+    PARTNERSHIP = "PARTNERSHIP"
+    LLP = "LLP"
+    COMPANY = "COMPANY"
+    UNKNOWN = "UNKNOWN"
+
+
+class SourceType(str, Enum):
+    PDF = "PDF"
+    AA = "AA"
+    CSV = "CSV"
+    API = "API"
+    CORE_BANKING = "CORE_BANKING"
+
+
+class Direction(str, Enum):
+    CREDIT = "CREDIT"
+    DEBIT = "DEBIT"
+
+
+class ChannelFamily(str, Enum):
+    """Section 3.4 channel-family normalisation."""
+
+    UPI = "UPI"
+    IMPS = "IMPS"
+    NEFT = "NEFT"
+    RTGS = "RTGS"
+    ACH_NACH = "ACH_NACH"
+    POS_CARD = "POS_CARD"
+    MERCHANT_SETTLEMENT = "MERCHANT_SETTLEMENT"
+    CASH = "CASH"
+    CHEQUE = "CHEQUE"
+    CMS = "CMS"
+    INTERNAL_BOOK = "INTERNAL_BOOK"
+    ATM = "ATM"
+    FEE_CHARGE = "FEE_CHARGE"
+    INTEREST = "INTEREST"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+class CreditRole(str, Enum):
+    """Section 6.1 credit roles."""
+
+    OPERATING_COLLECTION = "C01"
+    MERCHANT_SETTLEMENT = "C02"
+    BUSINESS_CASH_DEPOSIT = "C03"
+    INTERNAL_TRANSFER_IN = "C04"
+    FINANCING_IN = "C05"
+    OWNER_CAPITAL_IN = "C06"
+    ASSET_INVESTMENT_REALISATION = "C07"
+    REFUND_REVERSAL_IN = "C08"
+    STATUTORY_REFUND = "C09"
+    INTEREST_OTHER_FINANCIAL_INCOME = "C10"
+    PERSONAL_FAMILY_IN = "C11"
+    PASS_THROUGH_IN = "C12"
+    UNKNOWN_CREDIT = "C13"
+
+
+class DebitRole(str, Enum):
+    """Section 6.2 debit roles."""
+
+    DIRECT_PURCHASE_COST = "D01"
+    PAYROLL_LABOUR = "D02"
+    RENT_OCCUPANCY = "D03"
+    UTILITIES_BUSINESS = "D04"
+    LOGISTICS_FREIGHT = "D05"
+    OTHER_OPEX = "D06"
+    STATUTORY_BUSINESS = "D07"
+    DEBT_INTEREST = "D08"
+    DEBT_PRINCIPAL = "D09"
+    CAPEX = "D10"
+    MAINTENANCE_CAPEX = "D11"
+    OWNER_DRAW = "D12"
+    PERSONAL_EXPENSE = "D13"
+    INTERNAL_TRANSFER_OUT = "D14"
+    REFUND_REVERSAL_OUT = "D15"
+    BUSINESS_CASH_WITHDRAWAL = "D16"
+    PASS_THROUGH_OUT = "D17"
+    BANK_FEE_CHARGE = "D18"
+    UNKNOWN_DEBIT = "D19"
+
+
+CREDIT_ROLE_CODES = [r.value for r in CreditRole]
+DEBIT_ROLE_CODES = [r.value for r in DebitRole]
+
+
+def role_codes_for(direction: Direction) -> list[str]:
+    return CREDIT_ROLE_CODES if direction == Direction.CREDIT else DEBIT_ROLE_CODES
+
+
+class Archetype(str, Enum):
+    """Section 9.1 account/business archetypes."""
+
+    A01_INVENTORY_TRADER = "A01"
+    A02_HIGH_FREQUENCY_RETAIL = "A02"
+    A03_PROFESSIONAL_SERVICE = "A03"
+    A04_MANUFACTURING = "A04"
+    A05_PROJECT_CONTRACTOR = "A05"
+    A06_INTERMEDIARY_PASS_THROUGH = "A06"
+    A07_TRANSPORT_ASSET_OPERATOR = "A07"
+    A08_MIXED_PERSONAL_BUSINESS = "A08"
+    A09_UNCLASSIFIED = "A09"
+
+
+class IdentityStatus(str, Enum):
+    """Section 5.3 entity hypothesis identity status."""
+
+    DETERMINISTIC = "DETERMINISTIC"
+    PROBABLE = "PROBABLE"
+    BEHAVIOURAL_ONLY = "BEHAVIOURAL_ONLY"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class PairEdgeType(str, Enum):
+    """Section 8 / 17 flow-pair edge types."""
+
+    INTERNAL_TRANSFER = "INTERNAL_TRANSFER"
+    REVERSAL = "REVERSAL"
+    PASS_THROUGH = "PASS_THROUGH"
+    RECYCLING = "RECYCLING"
+
+
+class CycleStatus(str, Enum):
+    IDENTIFIED = "IDENTIFIED"
+    WEAK_OR_UNIDENTIFIED = "WEAK_OR_UNIDENTIFIED"
+
+
+class CoverageRisk(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    INDETERMINATE = "INDETERMINATE"
+
+
+class TrendRegime(str, Enum):
+    DECLINE = "DECLINE"
+    STABLE = "STABLE"
+    GROWTH_CORROBORATED = "GROWTH_CORROBORATED"
+    GROWTH_UNCORROBORATED = "GROWTH_UNCORROBORATED"
+    INSUFFICIENT_HISTORY = "INSUFFICIENT_HISTORY"
+
+
+class LegalAttributionStatus(str, Enum):
+    ATTRIBUTABLE = "ATTRIBUTABLE"
+    DOCUMENTED_COMPONENTS_ONLY = "DOCUMENTED_COMPONENTS_ONLY"
+    FIRM_CASH_INCOME_ONLY = "FIRM_CASH_INCOME_ONLY"
+    NEEDS_LEGAL_ATTRIBUTION = "NEEDS_LEGAL_ATTRIBUTION"
+
+
+class AnalysisStatus(str, Enum):
+    """Appendix C status and referral codes."""
+
+    SUCCESS = "SUCCESS"
+    REFER_LOW_CONFIDENCE = "REFER_LOW_CONFIDENCE"
+    REFER_COVERAGE_RISK = "REFER_COVERAGE_RISK"
+    REFER_ANOMALY = "REFER_ANOMALY"
+    REFER_LEGAL_ATTRIBUTION = "REFER_LEGAL_ATTRIBUTION"
+    INSUFFICIENT_HISTORY = "INSUFFICIENT_HISTORY"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    FAILED_DATA_QUALITY = "FAILED_DATA_QUALITY"
+    NO_SUSTAINABLE_INCOME = "NO_SUSTAINABLE_INCOME"
+    UNSUPPORTED_ACCOUNT_STRUCTURE = "UNSUPPORTED_ACCOUNT_STRUCTURE"
+
+
+class ReasonCode(str, Enum):
+    """Section 28.2 required reason codes."""
+
+    RC01_HIGH_FINANCING_CONTAMINATION = "RC01"
+    RC02_HIGH_TRANSFER_MASS = "RC02"
+    RC03_LOW_ROLE_CERTAINTY = "RC03"
+    RC04_WORKING_CAPITAL_BUILD = "RC04"
+    RC05_WORKING_CAPITAL_LIQUIDATION = "RC05"
+    RC06_RECENT_DETERIORATION = "RC06"
+    RC07_PASS_THROUGH_ACTIVITY = "RC07"
+    RC08_HIGH_COVERAGE_RISK = "RC08"
+    RC09_LEGAL_ATTRIBUTION_REQUIRED = "RC09"
+    RC10_ANOMALY_REVIEW = "RC10"
