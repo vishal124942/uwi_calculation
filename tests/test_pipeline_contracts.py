@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import csv
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -13,9 +12,9 @@ import pytest
 from builders import business, make_request
 from se_income_engine.contracts.enums import AccountType, LegalOwnerType
 from se_income_engine.pipeline.analyse import analyse_self_employed_income
-from se_income_engine.pipeline.step_snapshots import StepSnapshotWriter
-from se_income_engine.services.step01_ingest_and_clean.s03_statement_parsers import parse_analyser_xlsx
-from se_income_engine.services.step10_explain_and_audit.s25_audit_persistence import AuditStore
+from se_income_engine.pipeline.step_trace import StepTraceCollector
+from se_income_engine.services.m1_parser_normaliser.s03_statement_parsers import parse_analyser_xlsx
+from se_income_engine.services.supporting.audit_explainability.s25_audit_persistence import AuditStore
 
 ROOT = Path(__file__).resolve().parents[1]
 REAL_FILES = sorted(ROOT.glob("DOC*.xlsx"))
@@ -45,25 +44,18 @@ def test_bridge_reconciles_on_synthetic_business():
     assert u["interval_method"] == "BOOTSTRAP_UNCALIBRATED"
 
 
-def test_step_snapshots_are_cumulative_and_do_not_change_the_result(tmp_path):
+def test_step_trace_does_not_change_the_result():
     request = make_request(business().build())
-    writer = StepSnapshotWriter(tmp_path)
-    with_hook = analyse_self_employed_income(request, on_step=writer)
+    trace = StepTraceCollector()
+    with_hook = analyse_self_employed_income(request, on_step=trace)
     assert with_hook == analyse_self_employed_income(request)
 
-    names = {p.name for p in writer.written}
-    assert {f"step{n:02d}" for n in range(1, 11)} <= {name[:6] for name in names}
-    txn_files = ["step01b_canonical_transactions.csv", "step02_transactions_after_dq.csv",
-                 "step03_transactions_with_evidence.csv", "step04_transactions_with_roles.csv",
-                 "step05_transactions_after_pairing.csv", "step06_transactions_economic_ledger.csv"]
-    headers = []
-    for name in txn_files:
-        with (tmp_path / name).open() as fh:
-            rows = list(csv.DictReader(fh))
-        assert len(rows) == with_hook["transaction_count"]
-        headers.append(list(rows[0]))
-    for earlier, later in zip(headers, headers[1:]):
-        assert earlier == later[:len(earlier)] and len(later) > len(earlier)
+    assert {s[:6] for s in trace.steps} == {f"step{n:02d}" for n in range(1, 11)}
+    added = [trace.steps[s]["transactions"] for s in sorted(trace.steps) if trace.steps[s]["transactions"]]
+    assert len(added) == 6
+    for table in added:
+        assert len(table["rows"]) == with_hook["transaction_count"]
+        assert len(table["columns"]) > 1, "every transaction step adds its own columns"
 
 
 def test_analysis_is_idempotent_and_fully_audited(tmp_path):

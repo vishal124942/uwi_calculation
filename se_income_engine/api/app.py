@@ -12,18 +12,27 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from se_income_engine import __version__
+from se_income_engine.api import ui
 from se_income_engine.api.schemas import AnalyseRequestIn, to_analysis_request
 from se_income_engine.contracts.enums import AccountType, LegalOwnerType
 from se_income_engine.pipeline.analyse import analyse_self_employed_income
 from se_income_engine.pipeline.context import AnalysisRequest, BorrowerContext
-from se_income_engine.services.step01_ingest_and_clean.s03_statement_parsers import parse_analyser_xlsx
-from se_income_engine.services.step10_explain_and_audit.s23_feature_registry import FEATURE_REGISTRY, REGISTRY_VERSION
-from se_income_engine.services.step10_explain_and_audit.s25_audit_persistence import AuditStore
+from se_income_engine.services.m1_parser_normaliser.s03_statement_parsers import parse_analyser_xlsx
+from se_income_engine.services.supporting.audit_explainability.s23_feature_registry import FEATURE_REGISTRY, REGISTRY_VERSION
+from se_income_engine.services.supporting.audit_explainability.s25_audit_persistence import AuditStore
 from se_income_engine.versions import COMPONENT_VERSIONS
 
 app = FastAPI(title="Self-Employed Income Reconstruction Engine", version=__version__)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("SEI_UI_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","),
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+app.include_router(ui.router)
 _store = AuditStore(Path(os.environ.get("SEI_AUDIT_DB", "se_income_audit.db")))
 
 

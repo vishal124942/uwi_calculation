@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-ink-950: #070a10;
+  --color-ink-900: #0b1019;
+  --color-ink-850: #0f1622;
+  --color-ink-800: #141c2b;
+  --color-ink-700: #1d2738;
+  --color-ink-600: #2a3649;
+  --color-ink-500: #3d4a60;
+  --color-ink-400: #66748b;
+  --color-ink-300: #94a1b6;
+  --color-ink-200: #c3cbd8;
+  --color-ink-100: #e6eaf1;
+
+  --color-income: #34d399;
+  --color-deduct: #fb7185;
+  --color-subtotal: #38bdf8;
+  --color-adjust: #fbbf24;
+  --color-policy: #a78bfa;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(56, 189, 248, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(167, 139, 250, 0.07), transparent 60%),
+    var(--color-ink-950);
+  color: var(--color-ink-100);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-600) transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.45); }
+  100% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+}
+
+.pulse-ring {
+  animation: pulse-ring 1.2s ease-out infinite;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rise {
+  animation: rise 0.35s ease-out both;
+}
+
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+/* Page change: content slides up and fades in. */
+@keyframes view-enter {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+.view-enter {
+  animation: view-enter 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Cursor-following glow on cards; --mx / --my are set by useSpotlight(). */
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(125, 211, 252, 0.07), transparent 60%);
+}
+
+.spotlight:hover::before {
+  opacity: 1;
+}
+
+.spotlight:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Rotating gradient border for the headline card. */
+@property --ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ring-spin {
+  to { --ring-angle: 360deg; }
+}
+
+.gradient-ring {
+  position: relative;
+  isolation: isolate;
+}
+
+.gradient-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--ring-angle), rgba(56, 189, 248, 0.0), rgba(56, 189, 248, 0.7), rgba(167, 139, 250, 0.8), rgba(52, 211, 153, 0.5), rgba(56, 189, 248, 0.0) 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ring-spin 6s linear infinite;
+}
+
+/* Slow drifting colour behind the app. */
+@keyframes aurora {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(4%, 3%, 0) scale(1.08); }
+}
+
+.aurora {
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 35% at 20% 15%, rgba(56, 189, 248, 0.10), transparent 70%),
+    radial-gradient(35% 30% at 85% 10%, rgba(167, 139, 250, 0.10), transparent 70%),
+    radial-gradient(30% 30% at 60% 90%, rgba(52, 211, 153, 0.06), transparent 70%);
+  animation: aurora 24s ease-in-out infinite;
+}
+
+/* Money moving along a flow path. */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -48; }
+}
+
+.flow-dash {
+  stroke-dasharray: 2 22;
+  animation: flow-dash 1.6s linear infinite;
+}
+
+@keyframes reveal-x {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.reveal-x {
+  animation: reveal-x 1.4s cubic-bezier(0.3, 0.6, 0.2, 1) both;
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+.shimmer {
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes ticker-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.ticker-in {
+  animation: ticker-in 0.25s ease-out both;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.pop {
+  animation: pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes countdown {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-enter, .rise, .pop, .ticker-in, .reveal-x { animation: none; }
+  .aurora, .flow-dash, .shimmer, .gradient-ring::after, .pulse-ring { animation: none; }
+}

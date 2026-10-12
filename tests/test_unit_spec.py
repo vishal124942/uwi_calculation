@@ -14,8 +14,8 @@ from se_income_engine.config.parameters import DEFAULT_PARAMETERS
 from se_income_engine.contracts.enums import (AnalysisStatus, CycleStatus, LegalAttributionStatus, LegalOwnerType,
                                               PairEdgeType)
 from se_income_engine.pipeline.analyse import run_analysis_pipeline
-from se_income_engine.services.step01_ingest_and_clean.s03_transaction_canonicalisation import canonicalize_account
-from se_income_engine.services.step02_data_quality_gate.s04_statement_integrity_gate import reconcile_statement_arithmetic
+from se_income_engine.services.m1_parser_normaliser.s03_transaction_canonicalisation import canonicalize_account
+from se_income_engine.services.supporting.dq_integrity_gate.s04_statement_integrity_gate import reconcile_statement_arithmetic
 
 
 def run(*accounts, **kw):
@@ -65,8 +65,10 @@ def test_ut03_internal_transfer_excluded_exactly_once():
     a = business(seed=11, account_id="ACC1", masked_account="XXXXXX1234")
     b = business(seed=12, account_id="ACC2", masked_account="XXXXXX5678")
     transfer_day = date(2025, 6, 10)
-    a.debit(transfer_day, 75000, f"NEFT/N{a.rrn()}/{HOLDER}/TRF TO A/C XXXXXX5678")
-    b.credit(transfer_day, 75000, f"NEFT/N{b.rrn()}/{HOLDER}/FROM A/C XXXXXX1234")
+    a.debit(transfer_day, 75000, f"NEFT/N{a.rrn()}/{HOLDER}/TRF TO A/C XXXXXX5678", "NEFT",
+            f"Fund Transfer to {HOLDER}")
+    b.credit(transfer_day, 75000, f"NEFT/N{b.rrn()}/{HOLDER}/FROM A/C XXXXXX1234", "NEFT",
+             f"Fund Transfer from {HOLDER}")
     ctx = run(a.build(), b.build())
 
     edges = [e for e in ctx.internal_edges if e.edge_type == PairEdgeType.INTERNAL_TRANSFER]
@@ -83,7 +85,7 @@ def test_ut03_internal_transfer_excluded_exactly_once():
 
 def test_ut04_explicit_loan_credit_does_not_increase_eoc(baseline):
     b = business()
-    b.credit(date(2025, 7, 5), 500000, "LOAN DISBURSAL A/C 99887766 BAJAJ FINANCE")
+    b.credit(date(2025, 7, 5), 500000, "LOAN DISBURSAL A/C 99887766 BAJAJ FINANCE", "NEFT", "Loan Disbursal")
     ctx = run(b.build())
     assert total(ctx, "financing_in") >= 500000 * 0.99
     assert abs(total(ctx, "eoc") - total(baseline, "eoc")) < 500000 * 0.01
@@ -93,7 +95,7 @@ def test_ut04_explicit_loan_credit_does_not_increase_eoc(baseline):
 def test_ut05_emi_split_follows_configured_interest_share(share):
     b = business(months=4)
     for m in range(1, 5):
-        b.debit(date(2025, m, 5), 12000, f"ACH/BAJAJ FINANCE EMI/UMRN{100000 + m}")
+        b.debit(date(2025, m, 5), 12000, f"ACH/BAJAJ FINANCE EMI/UMRN{100000 + m}", "NACH", "EMI")
     params = dataclasses.replace(DEFAULT_PARAMETERS, roles=dataclasses.replace(DEFAULT_PARAMETERS.roles,
                                                                                emi_interest_share=share))
     ctx = run_analysis_pipeline(make_request(b.build()), params)
@@ -108,8 +110,9 @@ def test_ut05_emi_split_follows_configured_interest_share(share):
 
 def test_ut06_credit_then_reversal_does_not_inflate_eoc(baseline):
     b = business()
-    b.credit(date(2025, 8, 4), 180000, f"NEFT/N{b.rrn()}/VIKAS ENTERPRISES/ICIC0004321")
-    b.debit(date(2025, 8, 6), 180000, f"REVERSAL NEFT/N{b.rrn()}/VIKAS ENTERPRISES RETURN")
+    b.credit(date(2025, 8, 4), 180000, f"NEFT/N{b.rrn()}/VIKAS ENTERPRISES/ICIC0004321", "NEFT",
+             "Fund Transfer from VIKAS ENTERPRISES")
+    b.debit(date(2025, 8, 6), 180000, f"REVERSAL NEFT/N{b.rrn()}/VIKAS ENTERPRISES RETURN", "NEFT", "Reversal")
     ctx = run(b.build())
     assert any(e.edge_type == PairEdgeType.REVERSAL for e in ctx.pair_graph.edges)
     assert total(ctx, "eoc") - total(baseline, "eoc") < 180000 * 0.05
@@ -120,7 +123,7 @@ def test_ut07_cash_deposit_is_probabilistic():
     deposits = []
     for m in range(1, 7):
         for day in (5, 12, 19, 26):
-            b.credit(date(2025, m, day), 20000, "BY CASH BRANCH 0042")
+            b.credit(date(2025, m, day), 20000, "BY CASH BRANCH 0042", "Cash-Bank Branch", "Cash Deposit")
             deposits.append((date(2025, m, day), 20000))
     ctx = run(b.build())
     cash = [t for t in ctx.txns if "BY CASH" in (t.raw_narration or "")]
@@ -135,8 +138,10 @@ def test_ut08_pass_through_retained_economics_only(baseline):
     b = business()
     for m in range(2, 12):
         d = date(2025, m, 20)
-        b.credit(d, 100000, f"NEFT/N{b.rrn()}/MEHTA COMMODITIES/HDFC0009876")
-        b.debit(d + timedelta(days=1), 95000, f"NEFT/N{b.rrn()}/ARORA EXPORTS/SBIN0001111")
+        b.credit(d, 100000, f"NEFT/N{b.rrn()}/MEHTA COMMODITIES/HDFC0009876", "NEFT",
+                 "Fund Transfer from MEHTA COMMODITIES")
+        b.debit(d + timedelta(days=1), 95000, f"NEFT/N{b.rrn()}/ARORA EXPORTS/SBIN0001111", "NEFT",
+                "Fund Transfer to ARORA EXPORTS")
     ctx = run(b.build())
     added_eoc = total(ctx, "eoc") - total(baseline, "eoc")
     gross_in = 100000 * 10
@@ -148,7 +153,8 @@ def test_ut09_one_off_capex_does_not_depress_core_opex():
     funded = Decimal("1200000")
     baseline = run(business(opening_balance=funded).build())
     b = business(opening_balance=funded)
-    b.debit(date(2025, 9, 9), 850000, f"RTGS/R{b.rrn()}/TATA MOTORS VEHICLE PURCHASE")
+    b.debit(date(2025, 9, 9), 850000, f"RTGS/R{b.rrn()}/TATA MOTORS VEHICLE PURCHASE", "RTGS",
+            "Fund Transfer to TATA MOTORS")
     ctx = run(b.build())
     assert total(ctx, "capex") >= 850000 * 0.7
     assert total(ctx, "cor") - total(baseline, "cor") < 850000 * 0.2
@@ -183,7 +189,8 @@ def test_cycle_returns_weak_when_no_lag_evidence():
     b = StatementBuilder(months=4, seed=3)
     for d in b.days():
         b.upi_receipt(d, 800 + (d.toordinal() * 37) % 900)
-    b.debit(b.start + timedelta(days=40), 30000, f"NEFT/N{b.rrn()}/SHARMA TRADERS/HDFC0001234")
+    b.debit(b.start + timedelta(days=40), 30000, f"NEFT/N{b.rrn()}/SHARMA TRADERS/HDFC0001234", "NEFT",
+            "Fund Transfer to SHARMA TRADERS")
     ctx = run(b.build())
     assert ctx.cycle.status == CycleStatus.WEAK_OR_UNIDENTIFIED
     assert ctx.cycle.build_normalisation_amount == 0 and ctx.cycle.liquidation_normalisation_amount == 0
@@ -243,7 +250,7 @@ def test_ut14_classification_functional_without_counterparty_names(baseline):
 def test_ut15_aliases_resolve_and_entity_failure_does_not_change_channel_rules(monkeypatch):
     b = business(months=4)
     for m, alias in zip(range(1, 5), ["RAMESH KUMAR", "RAMESH KR", "R KUMAR", "RAMESH KUMAR"]):
-        b.credit(date(2025, m, 8), 7000, f"UPI/{b.rrn()}/CR/{alias}/SBIN/rameshk@oksbi")
+        b.credit(date(2025, m, 8), 7000, f"UPI/{b.rrn()}/CR/{alias}/SBIN/rameshk@oksbi", "UPI", f"Fund Transfer from {alias}")
     ctx = run(b.build())
     alias_ids = [t.transaction_id for t in ctx.txns if "RAMESHK@OKSBI" in (t.normalized_narration or "")]
     assert len({ctx.hypotheses[i].cluster_id for i in alias_ids}) == 1, "VPA-linked aliases must share an entity"
@@ -278,9 +285,48 @@ def test_bank_format_codes_are_not_counterparty_bank_or_name(narration, bank, na
     become the counterparty bank or a name token that links unrelated transactions into one entity."""
     from se_income_engine.contracts.account import Transaction
     from se_income_engine.contracts.enums import Direction
-    from se_income_engine.services.step03_transaction_evidence.s05_identifier_extraction import extract_identifiers
+    from se_income_engine.services.m2_role_classifier.s05_identifier_extraction import extract_identifiers
 
     ids = extract_identifiers(Transaction("T1", "A1", date(2025, 3, 9), Direction.CREDIT, Decimal("100"),
                                           normalized_narration=narration))
     assert ids.bank_code == bank
     assert ids.name_tokens == names
+
+
+@pytest.mark.parametrize("payment_mode, category", [
+    ("Fund Transfer to MADAN NARAYAN", "FUND TRANSFER"),
+    ("Fund Transfer from SHREE GENERAL STORE", "FUND TRANSFER"),
+    ("Fund Transfer in ", "FUND TRANSFER"),
+    ("  bank   charges ", "BANK CHARGES"),
+    ("Statutory Payment-Tax", "STATUTORY PAYMENT-TAX"),
+    ("", None),
+    (None, None),
+])
+def test_payment_mode_category_drops_the_counterparty(payment_mode, category):
+    from se_income_engine.services.m1_parser_normaliser.s03_channel_family_normaliser import payment_mode_category
+
+    assert payment_mode_category(payment_mode) == category
+
+
+@pytest.mark.parametrize("mode, payment_mode, narration, channel", [
+    ("UPI", "Fund Transfer to MADAN NARAYAN", "UPI/DR/123/MADAN", "UPI"),
+    ("IMPS", "Penny Drop", "MPAY/IMPSI/TRTR/444455556666", "IMPS"),
+    ("Cash-CMS", "Cash Withdrawal", "AEPS CW 0042", "CASH"),
+    ("Cash-Bank Branch", "Cash Deposit", "BY CASH", "CASH"),
+    ("NACH", "EMI", "ACH/BAJAJ FINANCE", "ACH_NACH"),
+    ("UPI", "Bank Charges", "UPI CHARGES", "UPI"),
+    ("Other", "Bank Charges", "SMS CHGS QTR", "FEE_CHARGE"),
+    ("Other", "Statutory Payment-Tax", "CGST ON SMS CHARGES", "FEE_CHARGE"),
+    ("Other", "Interest Received", "SB INT PD", "INTEREST"),
+    ("Other", "Fund Transfer to MSEDCL", "NEFT/N123/MSEDCL", "OTHER"),
+    (None, None, "NEFT/N123/SHARMA TRADERS/ATM WDL/INT PD", "UNKNOWN"),
+])
+def test_channel_family_comes_from_source_columns_not_narration(mode, payment_mode, narration, channel):
+    from se_income_engine.contracts.account import Transaction
+    from se_income_engine.contracts.enums import Direction
+    from se_income_engine.services.m1_parser_normaliser.s03_channel_family_normaliser import normalize_channel
+
+    fields = {k: v for k, v in (("Mode", mode), ("Payment Mode", payment_mode)) if v is not None}
+    txn = Transaction("T1", "A1", date(2025, 3, 9), Direction.DEBIT, Decimal("100"), raw_narration=narration,
+                      normalized_narration=narration, parser_fields=fields)
+    assert normalize_channel(txn).value == channel

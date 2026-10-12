@@ -30,6 +30,10 @@ class Transaction:
     normalized_narration: str | None = None
     source_reference: str | None = None
     channel_family: ChannelFamily = ChannelFamily.UNKNOWN
+    # Source payment rail ("UPI", "CASH-BANK BRANCH", ...) and Payment Mode category ("FUND TRANSFER",
+    # "BANK CHARGES", ...), both upper-cased from parser_fields during canonicalisation.
+    mode: str | None = None
+    payment_mode: str | None = None
     parser_fields: dict[str, str] = field(default_factory=dict)
     source_page: int | None = None
     source_line: int | None = None

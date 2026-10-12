@@ -1,6 +1,7 @@
 """Section 26 - End-to-end processing pipeline: ``analyse_self_employed_income``.
 
-The step order and function names mirror the specification pseudocode exactly.
+The step order and function names mirror the specification pseudocode exactly; the services they call are
+packaged by Section 24.1 component (see ``se_income_engine/services/__init__.py``).
 Given identical source data, artifacts, configuration, as-of date and policy version the output is
 identical (Section 26.1); ``analysis_id`` is a content hash used as the idempotency key.
 """
@@ -18,57 +19,67 @@ from se_income_engine.config.parameters import DEFAULT_PARAMETERS, EngineParamet
 from se_income_engine.config.policy import get_policy
 from se_income_engine.contracts.enums import AnalysisStatus, LegalOwnerType
 from se_income_engine.pipeline.context import AnalysisContext, AnalysisRequest
-from se_income_engine.services.step01_ingest_and_clean.s03_channel_family_normaliser import normalize_channel
-from se_income_engine.services.step01_ingest_and_clean.s03_transaction_canonicalisation import canonicalize_all
-from se_income_engine.services.step02_data_quality_gate.s04_statement_integrity_gate import validate_statement_integrity
-from se_income_engine.services.step03_transaction_evidence.s05_entity_resolution import cluster_statistics, optional_latent_entity_clustering
-from se_income_engine.services.step03_transaction_evidence.s05_identifier_extraction import extract_identifiers
-from se_income_engine.services.step03_transaction_evidence.s05_narration_encoder import encode_narration
-from se_income_engine.services.step04_role_inference.s07_probability_calibrator import default_calibration_artifact, probability_calibrator
-from se_income_engine.services.step04_role_inference.s07_role_classifier import RoleClassifier
-from se_income_engine.services.step04_role_inference.s07_rule_overlay import apply_versioned_rule_overlay, refresh_prediction
-from se_income_engine.services.step05_pairing_and_multi_account.s08_flow_pair_graph import build_flow_pair_graph, update_roles_from_pair_evidence
-from se_income_engine.services.step03_transaction_evidence.s08_neighbourhood_features import (
+# M1 Parser/normaliser
+from se_income_engine.services.m1_parser_normaliser.s03_channel_family_normaliser import normalize_channel
+from se_income_engine.services.m1_parser_normaliser.s03_transaction_canonicalisation import canonicalize_all
+# M2 Role classifier (evidence features, model, calibration)
+from se_income_engine.services.m2_role_classifier.s05_entity_resolution import cluster_statistics, optional_latent_entity_clustering
+from se_income_engine.services.m2_role_classifier.s05_identifier_extraction import extract_identifiers
+from se_income_engine.services.m2_role_classifier.s05_narration_encoder import encode_narration
+from se_income_engine.services.m2_role_classifier.s07_probability_calibrator import default_calibration_artifact, probability_calibrator
+from se_income_engine.services.m2_role_classifier.s07_role_classifier import RoleClassifier
+from se_income_engine.services.m2_role_classifier.s08_neighbourhood_features import (
     build_neighbourhood_features,
     update_neighbourhood_role_shares,
 )
-from se_income_engine.services.step06_aggregation_archetype_cash.s09_archetype_inference import archetype_model
-from se_income_engine.services.step06_aggregation_archetype_cash.s10_s11_window_aggregation import aggregate_windows
-from se_income_engine.services.step06_aggregation_archetype_cash.s12_cash_cheque_merchant_passthrough import (
-    compute_cash_business_probability,
-    compute_pass_through_economics,
-)
-from se_income_engine.services.step07_risk_signals.s13_working_capital_cycle_engine import infer_operating_cycle
-from se_income_engine.services.step07_risk_signals.s14_balance_liquidity_engine import compute_balance_liquidity
-from se_income_engine.services.step07_risk_signals.s15_financing_debt_service import compute_financing_dependency
-from se_income_engine.services.step08_income_and_legal_attribution.s16_legal_attribution import attribute_business_income_to_borrower
-from se_income_engine.services.step07_risk_signals.s16_owner_extraction import compute_owner_extraction, finalise_owner_against_sbci
-from se_income_engine.services.step05_pairing_and_multi_account.s17_multi_account_consolidation import (
+# M3 Rule overlay
+from se_income_engine.services.m3_rule_overlay.s07_rule_overlay import apply_versioned_rule_overlay, refresh_prediction
+# M4 Flow-pair model
+from se_income_engine.services.m4_flow_pair_model.s08_flow_pair_graph import build_flow_pair_graph, update_roles_from_pair_evidence
+from se_income_engine.services.m4_flow_pair_model.s17_multi_account_consolidation import (
     compute_multi_account_features,
     consolidate_transaction_stream,
     exclude_internal_transfer_economics,
     match_interaccount_transfers,
     multiple_supplied_accounts,
 )
-from se_income_engine.services.step07_risk_signals.s18_trend_seasonality import compute_trend_seasonality
-from se_income_engine.services.step07_risk_signals.s19_anomaly_detection import compute_anomaly_features
-from se_income_engine.services.step07_risk_signals.s20_coverage_observability import compute_coverage_risk
-from se_income_engine.services.step08_income_and_legal_attribution.s21_income_normalisation import (
+# M5 Archetype classifier
+from se_income_engine.services.m5_archetype_classifier.s09_archetype_inference import archetype_model
+# M6 Cycle engine
+from se_income_engine.services.m6_cycle_engine.s13_working_capital_cycle_engine import infer_operating_cycle
+# M7 Income estimator
+from se_income_engine.services.m7_income_estimator.s16_legal_attribution import attribute_business_income_to_borrower
+from se_income_engine.services.m7_income_estimator.s21_income_normalisation import (
     normalize_cycle_and_seasonality,
     reconstruct_operating_cash_generation,
     sustainable_income_model,
 )
-from se_income_engine.services.step09_uncertainty_and_policy.s21_policy_engine import policy_engine
-from se_income_engine.services.step09_uncertainty_and_policy.s22_uncertainty_confidence import (
+# M8 Uncertainty model
+from se_income_engine.services.m8_uncertainty_model.s22_uncertainty_confidence import (
     ConformalArtifact,
     amount_weighted_role_uncertainty,
     cross_view_consistency,
     uncertainty_model,
     unresolved_flow_allowances,
 )
-from se_income_engine.services.step10_explain_and_audit.s23_feature_registry import materialise_feature_vector
-from se_income_engine.services.step10_explain_and_audit.s25_audit_persistence import AuditStore
-from se_income_engine.services.step10_explain_and_audit.s28_explanation_engine import explanation_engine
+# M9 Policy layer
+from se_income_engine.services.m9_policy_layer.s21_policy_engine import policy_engine
+# Supporting stages: integrity gate, economic ledger, behaviour and risk signals, explainability and audit
+from se_income_engine.services.supporting.audit_explainability.s23_feature_registry import materialise_feature_vector
+from se_income_engine.services.supporting.audit_explainability.s25_audit_persistence import AuditStore
+from se_income_engine.services.supporting.audit_explainability.s28_explanation_engine import explanation_engine
+from se_income_engine.services.supporting.dq_integrity_gate.s04_statement_integrity_gate import validate_statement_integrity
+from se_income_engine.services.supporting.ledger_operating_cash.s10_s11_window_aggregation import aggregate_windows
+from se_income_engine.services.supporting.ledger_operating_cash.s12_cash_cheque_merchant_passthrough import (
+    compute_cash_business_probability,
+    compute_pass_through_economics,
+)
+from se_income_engine.services.supporting.signals_behaviour_risk.s14_balance_liquidity_engine import compute_balance_liquidity
+from se_income_engine.services.supporting.signals_behaviour_risk.s15_financing_debt_service import compute_financing_dependency
+from se_income_engine.services.supporting.signals_behaviour_risk.s16_owner_extraction import compute_owner_extraction, finalise_owner_against_sbci
+from se_income_engine.services.supporting.signals_behaviour_risk.s18_trend_seasonality import compute_trend_seasonality
+from se_income_engine.services.supporting.signals_behaviour_risk.s19_anomaly_detection import compute_anomaly_features
+from se_income_engine.services.supporting.signals_behaviour_risk.s20_coverage_observability import compute_coverage_risk
 from se_income_engine.versions import COMPONENT_VERSIONS
 
 
@@ -139,7 +150,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
                           conformal: ConformalArtifact | None = None,
                           on_step: StepHook | None = None) -> AnalysisContext:
     """Executes Sections 3-23 and 28 and returns every intermediate result on the AnalysisContext.
-    ``on_step(step_folder_name, ctx)`` is called at the end of each services/stepNN_* step."""
+    ``on_step(step_id, ctx)`` is called at each ``services.PIPELINE_STEPS`` checkpoint."""
     policy = get_policy(request.policy_id)
     ctx = AnalysisContext(request=request, params=params, policy=policy)
     ctx.analysis_id = compute_analysis_id(request, policy.policy_id, policy.policy_version, params)
@@ -148,7 +159,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
         if on_step is not None:
             on_step(name, ctx)
 
-    # --- canonicalise + data-quality gate (Sections 3, 4)
+    # --- M1 canonicalise, then the statement integrity gate (Sections 3, 4)
     accounts = canonicalize_all(request.accounts)
     ctx.accounts = accounts
     step_done("step01_ingest_and_clean")
@@ -160,7 +171,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
     if dq.hard_stop:
         return ctx
 
-    # --- transaction stream + per-transaction evidence (Sections 3.4, 5, 8)
+    # --- M4 merges the account streams; M1 channel family; M2 evidence features (Sections 3.4, 5, 8.1, 17)
     txns = consolidate_transaction_stream(accounts)
     ctx.txns = txns
     holder = {a.account_id: _holder_info(a) for a in accounts}
@@ -175,7 +186,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
     ctx.neighbourhood = build_neighbourhood_features(txns, ctx.hypotheses, ctx.cluster_stats, params.neighbourhood)
     step_done("step03_transaction_evidence")
 
-    # --- probabilistic role inference (Section 7)
+    # --- M2 role model + calibration, then the M3 rule overlay (Section 7)
     role_model = RoleClassifier(emi_interest_share=params.roles.emi_interest_share)
     role_probs_raw = role_model.predict(txns, ctx.identifiers, ctx.hypotheses, ctx.cluster_stats, ctx.neighbourhood)
     role_probs_cal = probability_calibrator(role_probs_raw, default_calibration_artifact(
@@ -185,13 +196,13 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
     ctx.predictions = role_probs_final
     step_done("step04_role_inference")
 
-    # --- flow pairing (Section 8.2)
+    # --- M4 flow pairing (Section 8.2)
     pair_graph = build_flow_pair_graph(txns, role_probs_final, ctx.hypotheses, ctx.cluster_stats, ctx.neighbourhood,
                                        params.neighbourhood)
     ctx.pair_graph = pair_graph
     update_roles_from_pair_evidence(role_probs_final, pair_graph)
 
-    # --- multi-account consolidation (Section 17)
+    # --- M4 inter-account transfers (Section 17)
     if multiple_supplied_accounts(accounts):
         internal_edges = match_interaccount_transfers(accounts, pair_graph, params.multi_account, ctx.identifiers)
         exclude_internal_transfer_economics(internal_edges, role_probs_final, pair_graph)
@@ -201,7 +212,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
     update_neighbourhood_role_shares(txns, ctx.neighbourhood, role_probs_final)
     step_done("step05_pairing_and_multi_account")
 
-    # --- aggregation, archetype, cash eligibility (Sections 9, 10, 11, 12)
+    # --- economic ledger, with M5 archetype between the two aggregation passes (Sections 9-12)
     stmt_start = min(a.statement_start for a in accounts)
     stmt_end = max(a.statement_end for a in accounts)
     application_date = request.borrower_context.application_date or request.as_of_date
@@ -222,7 +233,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
     ctx.pass_through = compute_pass_through_economics(pair_graph, txns, role_probs_final)
     step_done("step06_aggregation_archetype_cash")
 
-    # --- cycle, liquidity, financing, owner, coverage, anomalies (Sections 13-20)
+    # --- behaviour and risk signals; M6 cycle engine once the financing events exist (Sections 13-20)
     ctx.liquidity = compute_balance_liquidity(accounts, account_features, ctx.neighbourhood)
     ctx.financing = compute_financing_dependency(txns, role_probs_final, account_features, ctx.liquidity)
     ctx.cycle = infer_operating_cycle(account_features, ctx.financing.financing_events, archetype.top, params.cycle)
@@ -241,7 +252,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
                                              params.anomaly)
     step_done("step07_risk_signals")
 
-    # --- income normalisation (Section 21)
+    # --- M7 income estimator: ROC -> CAOCG -> SBCI (Section 21)
     ctx.roc = reconstruct_operating_cash_generation(account_features)
     ctx.caocg = normalize_cycle_and_seasonality(ctx.roc, ctx.cycle, ctx.trend, account_features)
     ctx.cycle.features["WC08_CycleAdjustedROC"] = float(ctx.caocg.basis.value)
@@ -249,12 +260,12 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
                                         ctx.permitted_adjustments)
     finalise_owner_against_sbci(ctx.owner, account_features, ctx.sbci.sbci_monthly)
 
-    # --- legal attribution (Section 16.2)
+    # --- M7 legal attribution (Section 16.2)
     ctx.legal = attribute_business_income_to_borrower(ctx.sbci.sbci_monthly, ctx.owner,
                                                       _resolve_legal_owner_type(request), docs)
     step_done("step08_income_and_legal_attribution")
 
-    # --- uncertainty + policy (Sections 21.5, 22)
+    # --- M8 uncertainty, then the M9 policy layer (Sections 22, 21.5)
     dq_metrics = _consolidated_dq_metrics(dq)
     unresolved_out, unresolved_in = unresolved_flow_allowances(account_features.full_period.totals,
                                                                account_features.full_period.months)
@@ -290,7 +301,7 @@ def run_analysis_pipeline(request: AnalysisRequest, params: EngineParameters = D
                                  ctx.trend.features.get("TR11_RecentDeteriorationScore") or 0.0, accounts, policy)
     step_done("step09_uncertainty_and_policy")
 
-    # --- explanation, features, persistence (Sections 23, 25, 28)
+    # --- explainability and audit (Sections 23, 25, 28)
     ctx.explanation = explanation_engine(ctx)
     ctx.reason_codes = ctx.explanation.reasons
     ctx.feature_vector = materialise_feature_vector(ctx)

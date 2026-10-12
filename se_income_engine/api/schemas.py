@@ -25,7 +25,9 @@ class TransactionIn(BaseModel):
     balance_after: Decimal | None = None
     raw_narration: str | None = None
     source_reference: str | None = None
-    parser_fields: dict[str, str] = Field(default_factory=dict)
+    parser_fields: dict[str, str] = Field(
+        default_factory=dict,
+        description="Source columns as exported; 'Mode' and 'Payment Mode' decide the channel family (Section 3.4)")
     source_page: int | None = None
     source_line: int | None = None
     parse_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
